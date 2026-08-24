@@ -13,7 +13,15 @@ dependencies = [
     "opencv-python",
     "open3d",
     "scipy",
-    "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git@41736238f5bced4debf3f2a12375d2466874866d",
+    # TEMP DIAGNOSTIC: pinned to the commit right before COLMAP export
+    # support was added (github.com/ByteDance-Seed/Depth-Anything-3/commit/
+    # b7e5e23), which is what pulls in `pycolmap` -- the exact native
+    # frame in every segfault streetview-to-3d has hit calling GPU a
+    # second time. da3-baseline-test (confirmed to work twice in a row)
+    # vendors an even older copy that also predates this. Testing whether
+    # rolling back past it alone fixes the crash on the real app -- revert
+    # to 41736238f5bced4debf3f2a12375d2466874866d if this doesn't help.
+    "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git@a2dbab9f529d07a56a8e46f8362abc4fe566bcce",
 ]
 
 [tool.setuptools.packages.find]
