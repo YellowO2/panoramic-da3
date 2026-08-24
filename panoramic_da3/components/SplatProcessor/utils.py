@@ -10,7 +10,7 @@ import os
 # still gets filtered (floor) but a call never discards everything (upper
 # clamp).
 CONF_ABS_FLOOR = 1.05
-CONF_LOWER_PERCENTILE = 55.0
+CONF_LOWER_PERCENTILE = 45.0
 CONF_UPPER_PERCENTILE = 90.0
 
 
