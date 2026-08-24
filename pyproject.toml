@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panoramic-da3"
+version = "0.1.0"
+description = "Run Depth Anything 3 jointly on a batch of panoramic images and backproject to a world-space point cloud"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "torch",
+    "opencv-python",
+    "open3d",
+    "scipy",
+    "depth-anything-3 @ git+https://github.com/ByteDance-Seed/Depth-Anything-3.git@41736238f5bced4debf3f2a12375d2466874866d",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["panoramic_da3*"]
