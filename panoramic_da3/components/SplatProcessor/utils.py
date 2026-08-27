@@ -5,12 +5,11 @@ import os
 # DA3's own conf output is `1 + exp(x)` (unbounded, not a [0,1] probability,
 # not calibrated across scenes) -- see model/utils/head_utils.py's
 # "expp1" activation. Matches DA3's own reference export (utils/export/glb.py
-# get_conf_thresh), just stricter on the percentile: absolute floor, clamped
-# between a lower and upper percentile so a uniformly low-confidence view
-# still gets filtered (floor) but a call never discards everything (upper
-# clamp).
+# get_conf_thresh) exactly now -- same floor, same lower/upper percentile
+# (40/90) -- so a uniformly low-confidence view still gets filtered
+# (floor) but a call never discards everything (upper clamp).
 CONF_ABS_FLOOR = 1.05
-CONF_LOWER_PERCENTILE = 45.0
+CONF_LOWER_PERCENTILE = 40.0
 CONF_UPPER_PERCENTILE = 90.0
 
 
