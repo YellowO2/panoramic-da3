@@ -58,7 +58,8 @@ def _wedge_bounds_per_pano(views: list) -> dict:
 
 
 def backproject_views_to_pcd(views: list, da3_result,
-                             conf_lower_percentile: float = CONF_LOWER_PERCENTILE):
+                             conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
+                             return_confidence: bool = False):
     """
     Back-projects processed views into world space.
     Returns (all_pts, all_cols) combined, plus per_pano dicts
@@ -70,15 +71,26 @@ def backproject_views_to_pcd(views: list, da3_result,
 
     Each view only contributes points from its own angular wedge (see
     _wedge_bounds_per_pano) -- not its whole overlapping field of view.
+
+    return_confidence: also return a 5th dict, {pano_id: confidences},
+    DA3's own raw per-point confidence (same `1 + exp(x)` scale as the
+    filter above) for every point THIS CALL ALREADY KEPT -- a point
+    conf_lower_percentile dropped was never backprojected, so there is
+    no confidence to hand back for it; this only ever describes points
+    you already have. Lets a caller that kept more than it needs right
+    now (a high conf_lower_percentile) trim further later by its own
+    threshold, without asking DA3 to run again.
     """
     all_points = []
     all_colors = []
+    all_conf = [] if return_confidence else None
     per_pano_pts: dict[int, list] = {}
     per_pano_cols: dict[int, list] = {}
+    per_pano_conf: dict[int, list] = {} if return_confidence else None
 
     pred = da3_result.prediction
     if pred is None:
-        return None, None, {}, {}
+        return (None, None, {}, {}) + (({},) if return_confidence else ())
 
     wedge_bounds = _wedge_bounds_per_pano(views)
 
@@ -115,6 +127,10 @@ def backproject_views_to_pcd(views: list, da3_result,
         vidx = np.flatnonzero(valid.reshape(-1))
         if len(vidx) == 0:
             continue
+        if return_confidence:
+            v_conf = (conf.reshape(-1)[vidx] if conf is not None
+                     else np.full(len(vidx), np.nan, dtype=np.float32))
+            per_pano_conf.setdefault(v.pano_id, []).append(v_conf)
 
         # 2. Backproject to Camera Space
         rays = rays_full[vidx]
@@ -141,12 +157,16 @@ def backproject_views_to_pcd(views: list, da3_result,
                 per_pano_cols.setdefault(v.pano_id, []).append(cols)
 
     if not all_points:
-        return None, None, {}, {}
+        return (None, None, {}, {}) + (({},) if return_confidence else ())
     consolidated_pts = {pid: np.concatenate(pts, axis=0) for pid, pts in per_pano_pts.items()}
     consolidated_cols = {pid: np.concatenate(cols, axis=0) for pid, cols in per_pano_cols.items()}
-    return (
+    out = (
         np.concatenate(all_points, axis=0),
         np.concatenate(all_colors, axis=0) if all_colors else None,
         consolidated_pts,
         consolidated_cols,
     )
+    if return_confidence:
+        consolidated_conf = {pid: np.concatenate(c, axis=0) for pid, c in per_pano_conf.items()}
+        out += (consolidated_conf,)
+    return out

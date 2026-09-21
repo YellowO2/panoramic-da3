@@ -30,6 +30,7 @@ def run_da3(
     angle_thresh: float = 1,
     step_degrees: int = 20,
     conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
+    return_confidence: bool = False,
 ):
     """THE core primitive this package exposes: run DA3 jointly on a list
     of panos (target_depth_path plus any support_paths -- for a plain
@@ -83,6 +84,16 @@ def run_da3(
     view's weaker pixels; a caller that wants to decide later what to keep
     rather than have DA3 decide now can push this down (0 keeps everything
     the absolute floor and wedge/depth validity checks allow).
+
+    return_confidence: attach da3_result.pano_point_confidence --
+    {pano_id: per-point confidence array}, index-aligned with
+    per_pano_pts[pano_id] -- so a caller can trim further later by its
+    own threshold without a second DA3 call. Only ever covers points
+    already kept; does not recover anything conf_lower_percentile
+    dropped. Off by default: this package's other two callers
+    (panoramic-to-3dgs, da3-baseline-test) unpack run_da3's return by
+    fixed position, so the attribute is added to da3_result rather than
+    as a new return value, and stays empty unless asked for.
     """
     t_extract0 = time.monotonic()
     all_views = []
@@ -99,9 +110,12 @@ def run_da3(
     filtered_views, da3_result = da3.process_views(all_views, dist_thresh=dist_thresh, angle_thresh=angle_thresh)
     t_infer = time.monotonic() - t_infer0
     t_backproject0 = time.monotonic()
-    merged_pts, merged_cols, per_pano_pts, per_pano_cols = backproject_views_to_pcd(
-        filtered_views, da3_result, conf_lower_percentile=conf_lower_percentile
+    backprojected = backproject_views_to_pcd(
+        filtered_views, da3_result, conf_lower_percentile=conf_lower_percentile,
+        return_confidence=return_confidence,
     )
+    merged_pts, merged_cols, per_pano_pts, per_pano_cols = backprojected[:4]
+    da3_result.pano_point_confidence = backprojected[4] if return_confidence else {}
     t_backproject = time.monotonic() - t_backproject0
     print(f"[timing] run_da3: {len(all_views)} view(s) extracted in {t_extract:.2f}s, "
           f"DA3 inference in {t_infer:.2f}s, backproject in {t_backproject:.2f}s")

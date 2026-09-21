@@ -10,6 +10,7 @@ class DA3Result:
         self.prediction = prediction # Filtered DA3 Prediction object
         self.pano_avg_deviation = pano_avg_deviation or {} # pano_id -> avg dist deviation (m) among its own KEPT views only -- a single wild outlier gets filtered out anyway, so it says nothing about quality; the kept views still not agreeing well with each other on average is what actually flags a bad pairing. inf if zero views were kept.
         self.pano_keep_counts = pano_keep_counts or {} # pano_id -> (kept, total)
+        self.pano_point_confidence = {} # pano_id -> per-point confidence array; set by run_da3 only when return_confidence=True (see pipeline.py)
 
 class DA3Model:
     def __init__(self, model_path="./models/models--depth-anything--DA3NESTED-GIANT-LARGE-1.1/snapshots/b2359bdf726fb44ef62acca04d629dcf158053e7", device="cuda"):
