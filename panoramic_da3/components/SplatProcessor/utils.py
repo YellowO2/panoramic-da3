@@ -57,7 +57,8 @@ def _wedge_bounds_per_pano(views: list) -> dict:
     return bounds
 
 
-def backproject_views_to_pcd(views: list, da3_result):
+def backproject_views_to_pcd(views: list, da3_result,
+                             conf_lower_percentile: float = CONF_LOWER_PERCENTILE):
     """
     Back-projects processed views into world space.
     Returns (all_pts, all_cols) combined, plus per_pano dicts
@@ -106,7 +107,7 @@ def backproject_views_to_pcd(views: list, da3_result):
 
         valid = np.isfinite(depth) & (depth > 0) & in_wedge
         if conf is not None:
-            lower = np.percentile(conf, CONF_LOWER_PERCENTILE)
+            lower = np.percentile(conf, conf_lower_percentile)
             upper = np.percentile(conf, CONF_UPPER_PERCENTILE)
             conf_thr = min(max(CONF_ABS_FLOOR, lower), upper)
             valid &= conf >= conf_thr

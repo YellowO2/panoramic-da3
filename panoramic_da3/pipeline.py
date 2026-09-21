@@ -6,7 +6,9 @@ import torch
 
 from panoramic_da3.components.DepthMapGenerator.DA3Model import DA3Model
 from panoramic_da3.components.ViewExtractor.ViewExtractor import extract_views_for_da3
-from panoramic_da3.components.SplatProcessor.utils import backproject_views_to_pcd
+from panoramic_da3.components.SplatProcessor.utils import (
+    CONF_LOWER_PERCENTILE, backproject_views_to_pcd,
+)
 from panoramic_da3.components.Saver.Saver import Saver
 
 
@@ -27,6 +29,7 @@ def run_da3(
     dist_thresh: float = 0.2,
     angle_thresh: float = 1,
     step_degrees: int = 20,
+    conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
 ):
     """THE core primitive this package exposes: run DA3 jointly on a list
     of panos (target_depth_path plus any support_paths -- for a plain
@@ -73,6 +76,13 @@ def run_da3(
     slices/pano) trade per-pano slice redundancy for a lower image count at
     the same viewpoint coverage -- exposed for experimenting with that
     tradeoff, not used by default anywhere.
+
+    conf_lower_percentile: a pixel below this percentile of ITS OWN VIEW's
+    confidence is dropped before backprojection, whatever its raw value --
+    default 40 matches DA3's own reference export. Lower keeps more of a
+    view's weaker pixels; a caller that wants to decide later what to keep
+    rather than have DA3 decide now can push this down (0 keeps everything
+    the absolute floor and wedge/depth validity checks allow).
     """
     t_extract0 = time.monotonic()
     all_views = []
@@ -90,7 +100,7 @@ def run_da3(
     t_infer = time.monotonic() - t_infer0
     t_backproject0 = time.monotonic()
     merged_pts, merged_cols, per_pano_pts, per_pano_cols = backproject_views_to_pcd(
-        filtered_views, da3_result
+        filtered_views, da3_result, conf_lower_percentile=conf_lower_percentile
     )
     t_backproject = time.monotonic() - t_backproject0
     print(f"[timing] run_da3: {len(all_views)} view(s) extracted in {t_extract:.2f}s, "
