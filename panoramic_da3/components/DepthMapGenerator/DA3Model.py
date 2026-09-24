@@ -120,9 +120,6 @@ class DA3Model:
             for pv in data['per_view']:
                 if pv['dist'] <= dist_thresh and pv['angle_err'] <= angle_thresh:
                     pano_keep.append(pv['idx'])
-                else:
-                    v = views[pv['idx']]
-                    print(f"Filtering view {v.path}: dev_dist={pv['dist']:.3f}m, dev_angle={pv['angle_err']:.1f}deg")
 
             # Average deviation among the SURVIVING views only -- not the
             # worst outlier across everyone. A single wild outlier gets
