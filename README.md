@@ -1,6 +1,6 @@
 # panoramic-da3
 
-Runs [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3) jointly on a batch of panoramic images and backprojects the result to a world-space point cloud. This is the DA3 core extracted out of [panoramic-to-3dgs](https://github.com/YellowO2/panoramic-to-3dgs), which depends on this package for its own DA3 step and adds SHARP/Gaussian-splat generation on top.
+Runs [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3) on a batch of panoramic images. Outputs a world-space point cloud. 
 
 ## Install
 
