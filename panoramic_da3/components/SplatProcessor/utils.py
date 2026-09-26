@@ -59,7 +59,8 @@ def _wedge_bounds_per_pano(views: list) -> dict:
 
 def backproject_views_to_pcd(views: list, da3_result,
                              conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
-                             return_confidence: bool = False):
+                             return_confidence: bool = False,
+                             drop_mask=None):
     """
     Back-projects processed views into world space.
     Returns (all_pts, all_cols) combined, plus per_pano dicts
@@ -80,6 +81,11 @@ def backproject_views_to_pcd(views: list, da3_result,
     you already have. Lets a caller that kept more than it needs right
     now (a high conf_lower_percentile) trim further later by its own
     threshold, without asking DA3 to run again.
+
+    drop_mask: optional callable, given every view's image path in one
+    list, returning one boolean array per view (True = drop that pixel),
+    at any resolution. For removing things like cars and people, decided by
+    the caller's own model; this package stays model-agnostic.
     """
     all_points = []
     all_colors = []
@@ -93,6 +99,7 @@ def backproject_views_to_pcd(views: list, da3_result,
         return (None, None, {}, {}) + (({},) if return_confidence else ())
 
     wedge_bounds = _wedge_bounds_per_pano(views)
+    masks = drop_mask([v.path for v in views]) if drop_mask else None
 
     for i, v in enumerate(views):
         # 1. Geometry from DA3
@@ -123,6 +130,11 @@ def backproject_views_to_pcd(views: list, da3_result,
             upper = np.percentile(conf, CONF_UPPER_PERCENTILE)
             conf_thr = min(max(CONF_ABS_FLOOR, lower), upper)
             valid &= conf >= conf_thr
+        if masks is not None:
+            m = masks[i]
+            if m.shape != (h, w):
+                m = cv2.resize(m.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0
+            valid &= ~m
 
         vidx = np.flatnonzero(valid.reshape(-1))
         if len(vidx) == 0:

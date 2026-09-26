@@ -31,6 +31,7 @@ def run_da3(
     step_degrees: int = 20,
     conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
     return_confidence: bool = False,
+    drop_mask=None,
 ):
     """THE core primitive this package exposes: run DA3 jointly on a list
     of panos (target_depth_path plus any support_paths -- for a plain
@@ -94,6 +95,9 @@ def run_da3(
     (panoramic-to-3dgs, da3-baseline-test) unpack run_da3's return by
     fixed position, so the attribute is added to da3_result rather than
     as a new return value, and stays empty unless asked for.
+
+    drop_mask: pixels to leave out of the points, e.g. cars and people --
+    see backproject_views_to_pcd. DA3 itself still sees the whole view.
     """
     t_extract0 = time.monotonic()
     all_views = []
@@ -112,7 +116,7 @@ def run_da3(
     t_backproject0 = time.monotonic()
     backprojected = backproject_views_to_pcd(
         filtered_views, da3_result, conf_lower_percentile=conf_lower_percentile,
-        return_confidence=return_confidence,
+        return_confidence=return_confidence, drop_mask=drop_mask,
     )
     merged_pts, merged_cols, per_pano_pts, per_pano_cols = backprojected[:4]
     da3_result.pano_point_confidence = backprojected[4] if return_confidence else {}
