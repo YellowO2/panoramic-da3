@@ -5,7 +5,7 @@ import numpy as np
 import torch
 
 from panoramic_da3.components.DepthMapGenerator.DA3Model import DA3Model
-from panoramic_da3.components.ViewExtractor.ViewExtractor import extract_views_for_da3
+from panoramic_da3.components.ViewExtractor.ViewExtractor import HFOV, extract_views_for_da3
 from panoramic_da3.components.SplatProcessor.utils import (
     CONF_LOWER_PERCENTILE, backproject_views_to_pcd,
 )
@@ -32,6 +32,8 @@ def run_da3(
     conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
     return_confidence: bool = False,
     drop_mask=None,
+    hfov: float = HFOV,
+    ring_pitches=(),
 ):
     """THE core primitive this package exposes: run DA3 jointly on a list
     of panos (target_depth_path plus any support_paths -- for a plain
@@ -98,13 +100,17 @@ def run_da3(
 
     drop_mask: pixels to leave out of the points, e.g. cars and people --
     see backproject_views_to_pcd. DA3 itself still sees the whole view.
+
+    hfov, ring_pitches: how wide each slice is, and extra tilted rings --
+    see extract_views_for_da3. The defaults are the horizon ring alone.
     """
     t_extract0 = time.monotonic()
     all_views = []
     for i, path in enumerate([target_depth_path, *support_paths]):
         da3_dir = os.path.join(views_base, f"views_pano_{i}_da3")
         os.makedirs(da3_dir, exist_ok=True)
-        all_views.extend(extract_views_for_da3(path, da3_dir, prefix=f"pano_{i}_", pano_id=os.path.basename(path), step_degrees=step_degrees))
+        all_views.extend(extract_views_for_da3(path, da3_dir, prefix=f"pano_{i}_", pano_id=os.path.basename(path), step_degrees=step_degrees,
+                                               hfov=hfov, ring_pitches=ring_pitches))
     t_extract = time.monotonic() - t_extract0
 
     owns_da3 = da3 is None

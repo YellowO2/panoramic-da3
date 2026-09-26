@@ -13,48 +13,32 @@ CONF_LOWER_PERCENTILE = 40.0
 CONF_UPPER_PERCENTILE = 90.0
 
 
-def _wedge_bounds_per_pano(views: list) -> dict:
-    """For each pano's surviving views, the angular wedge (yaw degrees,
-    relative to that view's OWN yaw) it "owns" in the final point cloud --
-    a circular Voronoi split of the pano's 360 degrees by view-center yaw,
-    computed only from views actually present here (so a view dropped by
-    the consensus filter isn't a factor: its neighbors' wedges just expand
-    to cover the gap it left, automatically).
+def _view_axes_per_pano(views: list) -> dict:
+    """For each view: its rotation within its pano, and the optical axes
+    (in that pano's frame) of every view of the same pano present here.
+    A view keeps only the pixels whose direction is nearer its own axis
+    than any other view's -- so every direction comes from exactly one view.
 
-    Adjacent views are typically 20-30 degrees apart with a 90 degree HFOV,
-    so without this, the same real-world stretch of wall/curb gets
-    contributed by 2-3 different views' depth estimates that don't quite
-    agree pixel-for-pixel -- inflating point count and adding a soft
-    "doubled up" fuzziness. Trimming each view to only its own wedge (its
-    least-distorted, most-central region, since perspective crops stretch
-    more toward the edges) means every real-world direction comes from
-    exactly one view.
+    Adjacent views overlap a lot (90 degree slices 20-30 degrees apart), so
+    without this the same stretch of wall is contributed by 2-3 views whose
+    depths don't quite agree, doubling it up; each view's own share is also
+    its least distorted, central part. Only views actually present count: a
+    view dropped by the consensus filter leaves its share to its neighbours.
+    Around the horizon this is the old yaw wedge exactly; it also splits
+    tilted rings from the horizon ring.
 
-    Only handles yaw (not pitch) -- every view this pipeline actually
-    generates is sliced at pitch=0 (see extract_views_for_da3), so a 1D
-    circular partition is sufficient; there's no multi-row case to cover.
-
-    Returns {view_index: (lo_deg, hi_deg)}, bounds expressed relative to
-    that view's own yaw, directly comparable to a per-pixel yaw offset
-    computed from that same view's own camera rays -- no absolute-angle
-    wraparound bookkeeping needed."""
+    Returns {view_index: (R_local, axes (n x 3), own row in axes)}."""
+    from panoramic_da3.datatype import view_rotation
     by_pano = {}
     for i, v in enumerate(views):
-        by_pano.setdefault(v.pano_id, []).append((i, v.yaw % 360.0))
-
-    bounds = {}
-    for pano_id, entries in by_pano.items():
-        entries.sort(key=lambda e: e[1])
-        n = len(entries)
-        for k in range(n):
-            idx, yaw = entries[k]
-            if n == 1:
-                bounds[idx] = (-180.0, 180.0)
-                continue
-            prev_yaw = entries[k - 1][1] - (360.0 if k == 0 else 0.0)
-            next_yaw = entries[(k + 1) % n][1] + (360.0 if k == n - 1 else 0.0)
-            bounds[idx] = ((prev_yaw - yaw) / 2.0, (next_yaw - yaw) / 2.0)
-    return bounds
+        by_pano.setdefault(v.pano_id, []).append(i)
+    out = {}
+    for idx in by_pano.values():
+        rots = [view_rotation(views[i]) for i in idx]
+        axes = np.array([r[:, 2] for r in rots])
+        for k, i in enumerate(idx):
+            out[i] = (rots[k], axes, k)
+    return out
 
 
 def backproject_views_to_pcd(views: list, da3_result,
@@ -70,8 +54,8 @@ def backproject_views_to_pcd(views: list, da3_result,
     list DA3 was run on, not an arbitrary subset/reorder) — depth/pose/color
     are looked up positionally by enumerate(views).
 
-    Each view only contributes points from its own angular wedge (see
-    _wedge_bounds_per_pano) -- not its whole overlapping field of view.
+    Each view only contributes points in its own share of directions (see
+    _view_axes_per_pano) -- not its whole overlapping field of view.
 
     return_confidence: also return a 5th dict, {pano_id: confidences},
     DA3's own raw per-point confidence (same `1 + exp(x)` scale as the
@@ -98,7 +82,7 @@ def backproject_views_to_pcd(views: list, da3_result,
     if pred is None:
         return (None, None, {}, {}) + (({},) if return_confidence else ())
 
-    wedge_bounds = _wedge_bounds_per_pano(views)
+    view_axes = _view_axes_per_pano(views)
     masks = drop_mask([v.path for v in views]) if drop_mask else None
 
     for i, v in enumerate(views):
@@ -113,16 +97,11 @@ def backproject_views_to_pcd(views: list, da3_result,
         us, vs = np.meshgrid(np.arange(w), np.arange(h))
         pix = np.stack([us, vs, np.ones_like(us)], axis=-1).reshape(-1, 3)
 
-        # Per-pixel yaw offset from this view's own optical axis (verified:
-        # atan2(ray_x, ray_z) on K_inv @ pixel recovers the same yaw
-        # convention extract_views_for_da3's THETA uses -- 0 at image
-        # center, +/-HFOV/2 at the left/right edges), used to keep only
-        # this view's own wedge.
         K_inv = np.linalg.inv(K)
         rays_full = (K_inv @ pix.T).T
-        yaw_offset = np.degrees(np.arctan2(rays_full[:, 0], rays_full[:, 2])).reshape(h, w)
-        lo, hi = wedge_bounds.get(i, (-180.0, 180.0))
-        in_wedge = (yaw_offset >= lo) & (yaw_offset < hi)
+        R_local, axes, own = view_axes[i]
+        dirs = rays_full @ R_local.T
+        in_wedge = (np.argmax(dirs @ axes.T, axis=1) == own).reshape(h, w)
 
         valid = np.isfinite(depth) & (depth > 0) & in_wedge
         if conf is not None:

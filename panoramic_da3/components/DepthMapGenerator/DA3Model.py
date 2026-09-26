@@ -2,7 +2,7 @@ import copy
 import numpy as np
 from scipy.spatial.transform import Rotation
 from depth_anything_3.api import DepthAnything3
-from panoramic_da3.datatype import View
+from panoramic_da3.datatype import View, view_rotation
 
 class DA3Result:
     def __init__(self, pano_poses, prediction, pano_keep_counts=None, pano_avg_deviation=None):
@@ -45,7 +45,7 @@ class DA3Model:
             centers[idx] = (-R_w2c.T @ t_w2c).flatten()
 
             # R_w2c = R_local.T @ R_pano  => R_pano = R_local @ R_w2c
-            R_local = Rotation.from_euler('yx', [v.yaw, v.pitch], degrees=True).as_matrix()
+            R_local = view_rotation(v)
             R_locals[idx] = R_local
             global_rots[idx] = R_local @ R_w2c
 

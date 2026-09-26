@@ -31,13 +31,21 @@ def _extract_slice(
     return view
 
 
-HFOV = 90.0  # Fixed FOV for DA3 slices
+HFOV = 90.0  # Default FOV for DA3 slices
+RING_VIEWS = 6  # views in each tilted ring (see extract_views_for_da3)
 
 
 def extract_views_for_da3(
-    input_image, output_dir, step_degrees=20, prefix="", pano_id=0
+    input_image, output_dir, step_degrees=20, prefix="", pano_id=0,
+    hfov=HFOV, ring_pitches=(),
 ) -> list[View]:
-    """Extracts views for Depth Anything 3: 16:9 horizon slices."""
+    """Extracts views for Depth Anything 3: 16:9 slices around the horizon,
+    one every step_degrees, each hfov wide (90 reaches about 29 degrees
+    above and below the horizon; wider reaches further).
+
+    ring_pitches: extra rings of RING_VIEWS slices tilted by these degrees
+    (positive looks up, as Equirec2Perspec's PHI), for what the horizon
+    ring cannot reach -- building tops, the road nearer the camera."""
     equ = E2P.Equirectangular(input_image)
     pano_w = equ._img.shape[1]
 
@@ -45,15 +53,16 @@ def extract_views_for_da3(
     slice_h = int(slice_w * 9 / 16)
 
     views = []
-
-    # Horizon views (pitch=0)
-    yaw = 0.0
-    while yaw < 360.0:
-        filename = f"{prefix}da3_{int(round(yaw))}_0.jpg"
-        views.append(
-            _extract_slice(equ, yaw, 0, HFOV, slice_w, slice_h,
-                           os.path.join(output_dir, filename), pano_id)
-        )
-        yaw += step_degrees
+    rings = [(0.0, step_degrees, 0.0)] + [(float(p), 360.0 / RING_VIEWS, 180.0 / RING_VIEWS)
+                                          for p in ring_pitches]
+    for pitch, step, start in rings:
+        yaw = start
+        while yaw < 360.0:
+            filename = f"{prefix}da3_{int(round(yaw))}_{int(round(pitch))}.jpg"
+            views.append(
+                _extract_slice(equ, yaw, pitch, hfov, slice_w, slice_h,
+                               os.path.join(output_dir, filename), pano_id)
+            )
+            yaw += step
 
     return views

@@ -18,3 +18,12 @@ class View:
     pano_id: int | str = 0  # To group slices from the same panorama
 
     depth: Optional[np.ndarray] = None
+
+
+def view_rotation(v):
+    """A view's rotation within its pano (camera ray -> pano ray): yaw about
+    y, then pitch about the turned x -- intrinsic 'YX', exactly how
+    Equirec2Perspec.GetPerspective cuts it. (Extrinsic 'yx' agreed only at
+    pitch 0.)"""
+    from scipy.spatial.transform import Rotation
+    return Rotation.from_euler('YX', [v.yaw, v.pitch], degrees=True).as_matrix()
