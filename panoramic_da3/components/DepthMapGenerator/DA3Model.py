@@ -172,8 +172,6 @@ class DA3Model:
         filtered_pred.intrinsics = prediction.intrinsics[keep_indices]
         if prediction.conf is not None:
             filtered_pred.conf = prediction.conf[keep_indices]
-        if getattr(prediction, 'sky', None) is not None:
-            filtered_pred.sky = prediction.sky[keep_indices]
         if hasattr(prediction, 'processed_images') and prediction.processed_images is not None:
             filtered_pred.processed_images = [prediction.processed_images[i] for i in keep_indices]
 

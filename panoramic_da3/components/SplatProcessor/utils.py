@@ -90,8 +90,9 @@ def backproject_views_to_pcd(views: list, da3_result,
     far_every: also return, last, {pano_id: (points, colors)} of the
     pixels the confidence filter dropped -- mostly what is far away --
     every far_every-th row and column of them, leaving out what DA3 itself
-    calls sky (the nested model puts sky at its furthest depth). 0: not
-    collected.
+    calls sky: the nested model gives sky a confidence of exactly 1 (its
+    own is 1 + exp(x), always above) and a flat made-up depth, one sheet per
+    view. Its sky mask stays inside the model. 0: not collected.
     """
     per_pano_pts: dict[int, list] = {}
     per_pano_cols: dict[int, list] = {}
@@ -118,7 +119,6 @@ def backproject_views_to_pcd(views: list, da3_result,
 
     wedge_bounds = _wedge_bounds_per_pano(views)
     masks = drop_mask([v.path for v in views]) if drop_mask else None
-    sky_all = getattr(pred, 'sky', None)
 
     for i, v in enumerate(views):
         # 1. Geometry from DA3
@@ -176,11 +176,8 @@ def backproject_views_to_pcd(views: list, da3_result,
 
         if far_every:
             far = usable & ~valid
-            if sky_all is not None:
-                sky = sky_all[i]
-                if sky.shape != (h, w):
-                    sky = cv2.resize(sky.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0
-                far &= ~sky
+            if conf is not None:
+                far &= conf != 1.0      # sky, see far_every
             grid = np.zeros((h, w), bool)
             grid[::far_every, ::far_every] = True
             _, fp, fc = backproject(far & grid)
