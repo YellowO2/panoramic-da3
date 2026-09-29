@@ -33,7 +33,6 @@ def run_da3(
     return_confidence: bool = False,
     drop_mask=None,
     hfov: float = HFOV,
-    far_every: int = 0,
 ):
     """THE core primitive this package exposes: run DA3 jointly on a list
     of panos (target_depth_path plus any support_paths -- for a plain
@@ -102,12 +101,6 @@ def run_da3(
     see backproject_views_to_pcd. DA3 itself still sees the whole view.
 
     hfov: how wide each slice is (see extract_views_for_da3).
-
-    far_every: attach da3_result.pano_far_points -- {pano_id: (points,
-    colors)} of what the confidence filter dropped, sky left out, thinned
-    to every far_every-th pixel row and column (see
-    backproject_views_to_pcd). In the same frame as per_pano_pts. 0 (the
-    default) leaves it empty.
     """
     t_extract0 = time.monotonic()
     all_views = []
@@ -127,11 +120,10 @@ def run_da3(
     t_backproject0 = time.monotonic()
     backprojected = backproject_views_to_pcd(
         filtered_views, da3_result, conf_lower_percentile=conf_lower_percentile,
-        return_confidence=return_confidence, drop_mask=drop_mask, far_every=far_every,
+        return_confidence=return_confidence, drop_mask=drop_mask,
     )
     merged_pts, merged_cols, per_pano_pts, per_pano_cols = backprojected[:4]
     da3_result.pano_point_confidence = backprojected[4] if return_confidence else {}
-    da3_result.pano_far_points = backprojected[-1] if far_every else {}
     t_backproject = time.monotonic() - t_backproject0
     print(f"[timing] run_da3: {len(all_views)} view(s) extracted in {t_extract:.2f}s, "
           f"DA3 inference in {t_infer:.2f}s, backproject in {t_backproject:.2f}s")

@@ -60,7 +60,7 @@ def _wedge_bounds_per_pano(views: list) -> dict:
 def backproject_views_to_pcd(views: list, da3_result,
                              conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
                              return_confidence: bool = False,
-                             drop_mask=None, far_every: int = 0):
+                             drop_mask=None):
     """
     Back-projects processed views into world space.
     Returns (all_pts, all_cols) combined, plus per_pano dicts
@@ -86,36 +86,17 @@ def backproject_views_to_pcd(views: list, da3_result,
     list, returning one boolean array per view (True = drop that pixel),
     at any resolution. For removing things like cars and people, decided by
     the caller's own model; this package stays model-agnostic.
-
-    far_every: also return, last, {pano_id: (points, colors)} of the
-    pixels the confidence filter dropped -- mostly what is far away --
-    every far_every-th row and column of them, leaving out what DA3 itself
-    calls sky: the nested model gives sky a confidence of exactly 1 (its
-    own is 1 + exp(x), always above) and a flat made-up depth, one sheet per
-    view. Its sky mask stays inside the model. 0: not collected.
     """
+    all_points = []
+    all_colors = []
+    all_conf = [] if return_confidence else None
     per_pano_pts: dict[int, list] = {}
     per_pano_cols: dict[int, list] = {}
-    per_pano_conf: dict[int, list] = {}
-    per_pano_far: dict[int, list] = {}
-
-    def result():
-        if not per_pano_pts:
-            out = (None, None, {}, {}) + (({},) if return_confidence else ())
-        else:
-            cat = lambda d: {pid: np.concatenate(v, axis=0) for pid, v in d.items()}
-            pts, cols = cat(per_pano_pts), cat(per_pano_cols)
-            out = (np.concatenate(list(pts.values()), axis=0),
-                   np.concatenate(list(cols.values()), axis=0) if cols else None, pts, cols)
-            out += (cat(per_pano_conf),) if return_confidence else ()
-        if far_every:
-            out += ({pid: (np.concatenate([p for p, _ in v]), np.concatenate([c for _, c in v]))
-                     for pid, v in per_pano_far.items()},)
-        return out
+    per_pano_conf: dict[int, list] = {} if return_confidence else None
 
     pred = da3_result.prediction
     if pred is None:
-        return result()
+        return (None, None, {}, {}) + (({},) if return_confidence else ())
 
     wedge_bounds = _wedge_bounds_per_pano(views)
     masks = drop_mask([v.path for v in views]) if drop_mask else None
@@ -143,56 +124,61 @@ def backproject_views_to_pcd(views: list, da3_result,
         lo, hi = wedge_bounds.get(i, (-180.0, 180.0))
         in_wedge = (yaw_offset >= lo) & (yaw_offset < hi)
 
-        usable = np.isfinite(depth) & (depth > 0) & in_wedge
-        if masks is not None:
-            m = masks[i]
-            if m.shape != (h, w):
-                m = cv2.resize(m.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0
-            usable &= ~m
-        valid = usable.copy()
+        valid = np.isfinite(depth) & (depth > 0) & in_wedge
         if conf is not None:
             lower = np.percentile(conf, conf_lower_percentile)
             upper = np.percentile(conf, CONF_UPPER_PERCENTILE)
             conf_thr = min(max(CONF_ABS_FLOOR, lower), upper)
             valid &= conf >= conf_thr
+        if masks is not None:
+            m = masks[i]
+            if m.shape != (h, w):
+                m = cv2.resize(m.astype(np.uint8), (w, h), interpolation=cv2.INTER_NEAREST) > 0
+            valid &= ~m
 
-        w2c_homo = np.eye(4)
-        w2c_homo[:3, :4] = w2c[:3, :4]
-        c2w = np.linalg.inv(w2c_homo)
-        img_rgb = None
-        if v.path and os.path.exists(v.path):
-            img_bgr = cv2.imread(v.path)
-            if img_bgr is not None:
-                img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-                if img_rgb.shape[:2] != (h, w):
-                    img_rgb = cv2.resize(img_rgb, (w, h))
-
-        def backproject(sel):
-            """World points and colors (None: no image) of the pixels in sel."""
-            vidx = np.flatnonzero(sel.reshape(-1))
-            pts_cam = rays_full[vidx] * depth.flatten()[vidx][:, None]
-            pts_world = (c2w[:3, :3] @ pts_cam.T).T + c2w[:3, 3]
-            return vidx, pts_world, None if img_rgb is None else img_rgb.reshape(-1, 3)[vidx] / 255.0
-
-        if far_every:
-            far = usable & ~valid
-            if conf is not None:
-                far &= conf != 1.0      # sky, see far_every
-            grid = np.zeros((h, w), bool)
-            grid[::far_every, ::far_every] = True
-            _, fp, fc = backproject(far & grid)
-            if len(fp) and fc is not None:
-                per_pano_far.setdefault(v.pano_id, []).append((fp, fc))
-
-        vidx, pts_world, cols = backproject(valid)
+        vidx = np.flatnonzero(valid.reshape(-1))
         if len(vidx) == 0:
             continue
         if return_confidence:
             v_conf = (conf.reshape(-1)[vidx] if conf is not None
                      else np.full(len(vidx), np.nan, dtype=np.float32))
             per_pano_conf.setdefault(v.pano_id, []).append(v_conf)
-        per_pano_pts.setdefault(v.pano_id, []).append(pts_world)
-        if cols is not None:
-            per_pano_cols.setdefault(v.pano_id, []).append(cols)
 
-    return result()
+        # 2. Backproject to Camera Space
+        rays = rays_full[vidx]
+        pts_cam = rays * depth.flatten()[vidx][:, None]
+
+        # 3. Transform to World Space (using C2W)
+        w2c_homo = np.eye(4)
+        w2c_homo[:3, :4] = w2c[:3, :4]
+        c2w = np.linalg.inv(w2c_homo)
+
+        pts_world = (c2w[:3, :3] @ pts_cam.T).T + c2w[:3, 3]
+        all_points.append(pts_world)
+        per_pano_pts.setdefault(v.pano_id, []).append(pts_world)
+
+        # 4. Colors
+        if v.path and os.path.exists(v.path):
+            img_bgr = cv2.imread(v.path)
+            if img_bgr is not None:
+                img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+                if img_rgb.shape[:2] != (h, w):
+                    img_rgb = cv2.resize(img_rgb, (w, h))
+                cols = img_rgb.reshape(-1, 3)[vidx] / 255.0
+                all_colors.append(cols)
+                per_pano_cols.setdefault(v.pano_id, []).append(cols)
+
+    if not all_points:
+        return (None, None, {}, {}) + (({},) if return_confidence else ())
+    consolidated_pts = {pid: np.concatenate(pts, axis=0) for pid, pts in per_pano_pts.items()}
+    consolidated_cols = {pid: np.concatenate(cols, axis=0) for pid, cols in per_pano_cols.items()}
+    out = (
+        np.concatenate(all_points, axis=0),
+        np.concatenate(all_colors, axis=0) if all_colors else None,
+        consolidated_pts,
+        consolidated_cols,
+    )
+    if return_confidence:
+        consolidated_conf = {pid: np.concatenate(c, axis=0) for pid, c in per_pano_conf.items()}
+        out += (consolidated_conf,)
+    return out
