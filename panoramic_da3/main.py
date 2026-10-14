@@ -35,7 +35,8 @@ def panoramic_da3(panoramas, cfg, da3=None):
         da3 = DA3Model(cfg.da3_model)
     views = ViewExtractor(panoramas, cfg)
     da3_result = da3.process_views(views, cfg.dist_thresh, cfg.angle_thresh)
-    point_clouds = SplatProcessor(da3_result, cfg.conf_lower_percentile, cfg.return_confidence, cfg.drop_mask)
+    point_clouds = SplatProcessor(
+        da3_result, cfg.conf_lower_percentile, cfg.conf_floor, cfg.return_confidence, cfg.drop_mask)
     if owns_da3:
         da3.release()
     return point_clouds, da3_result

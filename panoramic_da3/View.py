@@ -7,7 +7,9 @@ from typing import Optional
 import numpy as np
 
 
-@dataclass
+# Compared by identity: a view holds an image, and two views are the same
+# only if they are the same slice.
+@dataclass(eq=False)
 class View:
     image: np.ndarray  # the slice itself, BGR
     width: int

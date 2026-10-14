@@ -5,7 +5,7 @@ Everything that tunes panoramic_da3, and nothing that flows through it.
 from dataclasses import dataclass
 from typing import Callable
 
-from panoramic_da3.components.SplatProcessor import CONF_LOWER_PERCENTILE
+from panoramic_da3.components.SplatProcessor import CONF_ABS_FLOOR, CONF_LOWER_PERCENTILE
 from panoramic_da3.components.ViewExtractor.Slicer import HFOV
 
 
@@ -24,9 +24,11 @@ class Settings:
     # A pixel below this percentile of its own view's confidence is dropped
     # before backprojection.
     conf_lower_percentile: float = CONF_LOWER_PERCENTILE
+    # ...and below this raw confidence, whatever its view's percentile.
+    conf_floor: float = CONF_ABS_FLOOR
     # Give each PointCloud DA3's confidence for its points, so a caller can
     # trim further later without running DA3 again.
     return_confidence: bool = False
     # Pixels to leave out of the points, e.g. cars and people: given every
-    # view's image, returns one boolean array per view (True = drop).
+    # View (image, pano_id, yaw), returns one boolean array per view (True = drop).
     drop_mask: Callable | None = None

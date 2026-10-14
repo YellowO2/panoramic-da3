@@ -64,6 +64,7 @@ def _wedge_bounds_per_pano(views: list) -> dict:
 
 def SplatProcessor(da3_result,
                    conf_lower_percentile: float = CONF_LOWER_PERCENTILE,
+                   conf_floor: float = CONF_ABS_FLOOR,
                    return_confidence: bool = False,
                    drop_mask=None) -> dict:
     """
@@ -82,8 +83,12 @@ def SplatProcessor(da3_result,
     now (a high conf_lower_percentile) trim further later by its own
     threshold, without asking DA3 to run again.
 
-    drop_mask: optional callable, given every view's image (BGR) in one
-    list, returning one boolean array per view (True = drop that pixel),
+    conf_floor: the lowest raw confidence a pixel needs, whatever its
+    view's percentile.
+
+    drop_mask: optional callable, given every view (a View, with its image,
+    pano_id and yaw) in one list, returning one boolean array per view
+    (True = drop that pixel),
     at any resolution. For removing things like cars and people, decided by
     the caller's own model; this package stays model-agnostic.
     """
@@ -97,7 +102,7 @@ def SplatProcessor(da3_result,
         return {}
 
     wedge_bounds = _wedge_bounds_per_pano(views)
-    masks = drop_mask([v.image for v in views]) if drop_mask else None
+    masks = drop_mask(views) if drop_mask else None
 
     for i, v in enumerate(views):
         # 1. Geometry from DA3
@@ -126,7 +131,7 @@ def SplatProcessor(da3_result,
         if conf is not None:
             lower = np.percentile(conf, conf_lower_percentile)
             upper = np.percentile(conf, CONF_UPPER_PERCENTILE)
-            conf_thr = min(max(CONF_ABS_FLOOR, lower), upper)
+            conf_thr = min(max(conf_floor, lower), upper)
             valid &= conf >= conf_thr
         if masks is not None:
             m = masks[i]
