@@ -1,8 +1,12 @@
-# from https://github.com/fuenwang/Equirec2Perspec
+"""
+Samples perspective views from an equirectangular panorama.
+
+From https://github.com/fuenwang/Equirec2Perspec
+"""
 import cv2
 import numpy as np
 
-def xyz2lonlat(xyz):
+def _xyz2lonlat(xyz):
     atan2 = np.arctan2
     asin = np.arcsin
 
@@ -19,7 +23,7 @@ def xyz2lonlat(xyz):
     out = np.concatenate(lst, axis=-1)
     return out
 
-def lonlat2XY(lonlat, shape):
+def _lonlat2XY(lonlat, shape):
     X = (lonlat[..., 0:1] / (2 * np.pi) + 0.5) * (shape[1] - 1)
     Y = (lonlat[..., 1:] / (np.pi) + 0.5) * (shape[0] - 1)
     lst = [X, Y]
@@ -27,7 +31,7 @@ def lonlat2XY(lonlat, shape):
 
     return out
 
-def lonlat2xyz(lonlat):
+def _lonlat2xyz(lonlat):
     lon = lonlat[..., 0:1]
     lat = lonlat[..., 1:2]
     x = np.cos(lat) * np.sin(lon)
@@ -36,7 +40,7 @@ def lonlat2xyz(lonlat):
     return np.concatenate([x, y, z], axis=-1)
 
 
-def rotate_equirectangular(img, heading: float, roll: float, pitch: float):
+def _rotate_equirectangular(img, heading: float, roll: float, pitch: float):
     """Rotate an equirectangular image about its own center: `pitch` (nose
     up/down) and `roll` (side to side), both relative to the vehicle's own
     direction of travel (`heading`), all in radians. Casts each output pixel
@@ -64,7 +68,7 @@ def rotate_equirectangular(img, heading: float, roll: float, pitch: float):
         ],
         axis=-1,
     )
-    xyz_out = lonlat2xyz(lonlat_out)
+    xyz_out = _lonlat2xyz(lonlat_out)
 
     y_axis = np.array([0.0, 1.0, 0.0], np.float32)
     R_heading, _ = cv2.Rodrigues(y_axis * heading)
@@ -76,8 +80,8 @@ def rotate_equirectangular(img, heading: float, roll: float, pitch: float):
     R = R_roll @ R_pitch
 
     xyz_src = xyz_out @ R
-    lonlat_src = xyz2lonlat(xyz_src)
-    XY_src = lonlat2XY(lonlat_src, shape=img.shape).astype(np.float32)
+    lonlat_src = _xyz2lonlat(xyz_src)
+    XY_src = _lonlat2XY(lonlat_src, shape=img.shape).astype(np.float32)
     return cv2.remap(img, XY_src[..., 0], XY_src[..., 1], cv2.INTER_CUBIC, borderMode=cv2.BORDER_WRAP)
 
 
@@ -126,8 +130,8 @@ class Equirectangular:
         R2, _ = cv2.Rodrigues(np.dot(R1, x_axis) * np.radians(PHI))
         R = R2 @ R1
         xyz = xyz @ R.T
-        lonlat = xyz2lonlat(xyz) 
-        XY = lonlat2XY(lonlat, shape=self._img.shape).astype(np.float32)
+        lonlat = _xyz2lonlat(xyz) 
+        XY = _lonlat2XY(lonlat, shape=self._img.shape).astype(np.float32)
         persp = cv2.remap(self._img, XY[..., 0], XY[..., 1], cv2.INTER_CUBIC, borderMode=cv2.BORDER_WRAP)
 
         return persp

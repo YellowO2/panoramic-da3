@@ -1,16 +1,15 @@
+"""
+Runs DA3 on views and keeps those that agree on their pano's pose.
+"""
+
 import copy
+import cv2
 import numpy as np
+import torch
 from scipy.spatial.transform import Rotation
 from depth_anything_3.api import DepthAnything3
-from panoramic_da3.datatype import View, view_rotation
-
-class DA3Result:
-    def __init__(self, pano_poses, prediction, pano_keep_counts=None, pano_avg_deviation=None):
-        self.pano_poses = pano_poses # pano_id -> {center, rotation}
-        self.prediction = prediction # Filtered DA3 Prediction object
-        self.pano_avg_deviation = pano_avg_deviation or {} # pano_id -> avg dist deviation (m) among its own KEPT views only -- a single wild outlier gets filtered out anyway, so it says nothing about quality; the kept views still not agreeing well with each other on average is what actually flags a bad pairing. inf if zero views were kept.
-        self.pano_keep_counts = pano_keep_counts or {} # pano_id -> (kept, total)
-        self.pano_point_confidence = {} # pano_id -> per-point confidence array; set by run_da3 only when return_confidence=True (see pipeline.py)
+from panoramic_da3.DA3Result import DA3Result
+from panoramic_da3.View import View
 
 class DA3Model:
     def __init__(self, model_path="./models/models--depth-anything--DA3NESTED-GIANT-LARGE-1.1/snapshots/b2359bdf726fb44ef62acca04d629dcf158053e7", device="cuda"):
@@ -45,7 +44,7 @@ class DA3Model:
             centers[idx] = (-R_w2c.T @ t_w2c).flatten()
 
             # R_w2c = R_local.T @ R_pano  => R_pano = R_local @ R_w2c
-            R_local = view_rotation(v)
+            R_local = v.rotation()
             R_locals[idx] = R_local
             global_rots[idx] = R_local @ R_w2c
 
@@ -175,7 +174,12 @@ class DA3Model:
             filtered_pred.processed_images = [prediction.processed_images[i] for i in keep_indices]
 
         print(f"Cleaned scene: Kept {len(filtered_views)}/{len(views)} views. (dist_thresh={dist_thresh}, angle_thresh={angle_thresh})")
-        return filtered_views, DA3Result(final_pano_poses, filtered_pred, pano_keep_counts, pano_avg_deviation)
+        return DA3Result(final_pano_poses, filtered_pred, pano_keep_counts, pano_avg_deviation, filtered_views)
+
+    def release(self):
+        """Free the model's memory. Nothing works on this DA3Model afterwards."""
+        del self.model
+        torch.cuda.empty_cache()
 
     def process_views(self, views: list[View], dist_thresh=0.2, angle_thresh=1):
         """
@@ -189,13 +193,12 @@ class DA3Model:
         exactly once, then applies each (dist_thresh, angle_thresh) pair in
         threshold_levels to that same result -- for comparing how much the
         consensus filter actually matters without paying for a separate GPU
-        forward pass per level. Returns one (filtered_views, DA3Result) pair
-        per threshold level, in the same order as threshold_levels."""
+        forward pass per level. Returns one DA3Result per threshold level, in the same order as threshold_levels."""
         if not views:
-            return [([], DA3Result({}, None)) for _ in threshold_levels]
+            return [DA3Result({}, None) for _ in threshold_levels]
 
         prediction = self.model.inference(
-            [v.path for v in views],
+            [cv2.cvtColor(v.image, cv2.COLOR_BGR2RGB) for v in views],
             export_format="mini_npz",
         )
         per_pano = self._compute_pano_consensus(views, prediction)
