@@ -12,13 +12,13 @@ from panoramic_da3.components.SplatProcessor import SplatProcessor
 from panoramic_da3.components.ViewExtractor.main import ViewExtractor
 
 
-def panoramic_da3(panoramas, cfg, da3=None):
+def panoramic_da3(panoramas, settings, da3=None):
     """THE core primitive this package exposes: run DA3 jointly on a batch of
     panoramas, {pano_id: BGR image}. Slices each into views, runs DA3's joint
     multi-view pose+depth inference, and backprojects to world-space points.
     Order doesn't matter to DA3 itself.
 
-    cfg: a `Settings`.
+    settings: a `Settings`.
 
     da3: reuse an already-loaded DA3Model instead of loading (and deleting)
     a fresh one -- for a caller making several of these calls in one GPU
@@ -32,11 +32,11 @@ def panoramic_da3(panoramas, cfg, da3=None):
     """
     owns_da3 = da3 is None
     if owns_da3:
-        da3 = DA3Model(cfg.da3_model)
-    views = ViewExtractor(panoramas, cfg)
-    da3_result = da3.process_views(views, cfg.dist_thresh, cfg.angle_thresh)
+        da3 = DA3Model(settings.da3_model)
+    views = ViewExtractor(panoramas, settings)
+    da3_result = da3.process_views(views, settings.dist_thresh, settings.angle_thresh)
     point_clouds = SplatProcessor(
-        da3_result, cfg.conf_lower_percentile, cfg.conf_floor, cfg.return_confidence, cfg.drop_mask)
+        da3_result, settings.conf_lower_percentile, settings.conf_floor, settings.return_confidence, settings.drop_mask)
     if owns_da3:
         da3.release()
     return point_clouds, da3_result
