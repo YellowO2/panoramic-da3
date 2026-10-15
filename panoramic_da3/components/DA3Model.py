@@ -2,6 +2,7 @@
 Runs DA3 on views and keeps those that agree on their pano's pose.
 """
 
+import logging
 import copy
 import cv2
 import numpy as np
@@ -11,6 +12,8 @@ from depth_anything_3.api import DepthAnything3
 from panoramic_da3.DA3Result import DA3Result
 from panoramic_da3.View import View
 
+logger = logging.getLogger(__name__)
+
 class DA3Model:
     def __init__(self, model_path="./models/models--depth-anything--DA3NESTED-GIANT-LARGE-1.1/snapshots/b2359bdf726fb44ef62acca04d629dcf158053e7", device="cuda"):
         # Two separate steps (load to CPU, then move to device), not one
@@ -19,10 +22,10 @@ class DA3Model:
         # which loads to CPU first specifically to keep weight loading
         # itself separate from the actual CUDA device-placement step.
         self.device = device
-        print(f"Loading Depth Anything 3 model from '{model_path}'...")
+        logger.info(f"Loading Depth Anything 3 model from '{model_path}'...")
         self.model = DepthAnything3.from_pretrained(model_path).to(device="cpu")
         if device != "cpu":
-            print(f"Moving Depth Anything 3 model to {device}...")
+            logger.info(f"Moving Depth Anything 3 model to {device}...")
             self.model = self.model.to(device=device)
 
     def _consensus_pose(self, indices: list[int], views: list[View], prediction):
@@ -159,7 +162,7 @@ class DA3Model:
                 cx, cy, cz = data['center']
 
             pano_keep_counts[pano_id] = (len(pano_keep), len(data['per_view']))
-            print(f"  pano {pano_id}: kept {len(pano_keep)}/{len(data['per_view'])}, center=({cx:.3f}, {cy:.3f}, {cz:.3f})")
+            logger.info(f"  pano {pano_id}: kept {len(pano_keep)}/{len(data['per_view'])}, center=({cx:.3f}, {cy:.3f}, {cz:.3f})")
 
         keep_indices = sorted(keep_indices)
         filtered_views = [views[i] for i in keep_indices]
@@ -173,7 +176,7 @@ class DA3Model:
         if hasattr(prediction, 'processed_images') and prediction.processed_images is not None:
             filtered_pred.processed_images = [prediction.processed_images[i] for i in keep_indices]
 
-        print(f"Cleaned scene: Kept {len(filtered_views)}/{len(views)} views. (dist_thresh={dist_thresh}, angle_thresh={angle_thresh})")
+        logger.info(f"Cleaned scene: Kept {len(filtered_views)}/{len(views)} views. (dist_thresh={dist_thresh}, angle_thresh={angle_thresh})")
         return DA3Result(final_pano_poses, filtered_pred, pano_keep_counts, pano_avg_deviation, filtered_views)
 
     def release(self):

@@ -3,7 +3,10 @@ Writes a point cloud to a PLY file.
 """
 
 import numpy as np
+import logging
 import cv2
+
+logger = logging.getLogger(__name__)
 
 
 def _voxel_downsample(points: np.ndarray, colors: np.ndarray | None, voxel_size: float):
@@ -101,7 +104,7 @@ def Saver(points: np.ndarray, path: str, colors: np.ndarray = None, voxel_size: 
             if len(flat_colors) == len(points):
                 colors = flat_colors
             else:
-                print("Warning: Image size doesn't match point count. Skipping colors.")
+                logger.warning("Image size doesn't match point count. Skipping colors.")
                 colors = None
         elif not (colors.ndim == 2 and colors.shape[0] == points.shape[0]):
             colors = None
@@ -109,7 +112,7 @@ def Saver(points: np.ndarray, path: str, colors: np.ndarray = None, voxel_size: 
     if voxel_size:
         before = len(points)
         points, colors = _voxel_downsample(points, colors, voxel_size)
-        print(f"Voxel downsample ({voxel_size}m): {before} -> {len(points)} points")
+        logger.info(f"Voxel downsample ({voxel_size}m): {before} -> {len(points)} points")
 
     _write_ply(path, points, colors)
-    print(f"Saved point cloud to: {path}")
+    logger.info(f"Saved point cloud to: {path}")
